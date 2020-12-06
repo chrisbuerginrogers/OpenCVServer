@@ -7,9 +7,10 @@ import socket
 
 # Set host port
 host_port = 8000
-ip_address = 'localhost'
+ip_address = '192.168.86.89'#'localhost'
 status= 'not connected'
 my_IP = socket.gethostbyname(socket.gethostname())
+URL='%s:%d'%(ip_address,host_port)
 
 # Webserver
 class MyServer(BaseHTTPRequestHandler):
@@ -21,25 +22,25 @@ class MyServer(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(('''<html><head><title>Rogers Camera Code</title></head>
                         <body><p>Rogers Camera  (%s)<br>Camera Status: %s</p>
-                        <a href = "http://localhost:%d/settings">Current Settings</a><br>
-                        <a href = "http://localhost:%d/init">Initialize Camera</a><br>
-                        <a href = "http://localhost:%d/snap">Snap an Image</a><br>
-                        <a href = "http://localhost:%d/grab">Stream Images</a><br>
-                        <a href = "http://localhost:%d/close">Close Camera Connection</a><br><br><br>
+                        <a href = "http://%s/settings">Current Settings</a><br>
+                        <a href = "http://%s/init">Initialize Camera</a><br>
+                        <a href = "http://%s/snap">Snap an Image</a><br>
+                        <a href = "http://%s/grab">Stream Images</a><br>
+                        <a href = "http://%s/close">Close Camera Connection</a><br><br><br>
                         <form action="/settings"> 
                         <label for="camera">Camera:</label>  
-                        <input type="text" id="camera" name="camera" value="1"><br> 
+                        <input type="number" id="camera" name="camera" value="%d"><br> 
                         <label for="scale">Scale Percent:</label>  
-                        <input type="scale" id="lname" name="scale" value="20"><br>  
+                        <input type="number" id="scale" name="scale" value="%d"><br>  
                         <label for="rotate">Orientation:</label> 
-                        <select name="rotate" id="rotate"> 
+                        <select name="rotate" id="rotate" value="%d"> 
                           <option value="-1">no rotation</option> 
                           <option value="0">90 CW</option> 
                           <option value="1">180</option> 
                           <option value="2">90 CCW</option> 
                         </select> <br><br>
                         <input type="submit" value="Update">  
-                    </form>'''%(my_IP,status,host_port,host_port,host_port,host_port,host_port)).encode("utf-8"))
+                    </form>'''%(my_IP,status,URL,URL,URL,URL,URL,camera,scale_percent,rotate)).encode("utf-8"))
             self.wfile.write(("<hr><p>Executing command: %s</p>" % self.path).encode("utf-8"))
         else:
             self.wfile.write("</body></html>\r\n".encode("utf-8"))
@@ -91,6 +92,10 @@ class MyServer(BaseHTTPRequestHandler):
             self.wfile.write('initializing camera # {}'.format(str(camera)).encode("utf-8"))
             print('setting up camera %d'% (camera))
         elif (url[0] == b'/snap'):
+            self.standardPage()
+            self.wfile.write('snapping from camera # {}'.format(str(camera)).encode("utf-8"))
+            self.wfile.write(('<br><br><img src="http://%s/snap.jpg">'%(URL)).encode("utf-8"))
+        elif (url[0] == b'/snap.jpg'):
             success, image = self.Snap()
             if success:
                 self.send_response(200)
@@ -103,22 +108,33 @@ class MyServer(BaseHTTPRequestHandler):
                 self.standardPage()
                 self.wfile.write('cannot grab image'.encode())
         elif (url[0] == b'/grab'):
+            self.standardPage()
+            self.wfile.write('grabbing from camera # {}'.format(str(camera)).encode("utf-8"))
+            self.wfile.write(('<br><br><iframe src="http://%s/grab.mjpg"></iframe>'%(URL)).encode("utf-8"))
+        elif (url[0] == b'/grab.mjpg'):
             self.send_response(200)
             self.send_header('Content-type','multipart/x-mixed-replace; boundary=--jpgboundary')
             self.end_headers()
+            fails = 0
             while True:
                 try:
                     success, image = self.Snap()
                     #cv2.imshow('frame',image) seems to crash things
                     if success:
+                        fails = 0
                         self.wfile.write('--jpgboundary\r\n'.encode())
                         self.send_header('Content-type','image/jpeg')
                         self.send_header('Content-length',str(image.size))
                         self.end_headers()
                         self.wfile.write(bytearray(image))
+                    else:
+                        fails += 1
+                        if fails > 10:
+                            break
                     time.sleep(0.05)
                 except KeyboardInterrupt:
-                        break
+                    print(e)
+                    break
             return
         elif (url[0] == b'/close'):
             status = 'not connected'
@@ -166,7 +182,7 @@ if __name__ == '__main__':
     
     http_server = ThreadedHTTPServer((ip_address, host_port), MyServer)
     print("Server Starts - %s:%s" % (ip_address, host_port))
-    webbrowser.open_new('http://%s:%s' %  (ip_address, host_port))
+    #webbrowser.open_new('http://%s:%s' %  (ip_address, host_port))
 
     try:
         http_server.serve_forever()
