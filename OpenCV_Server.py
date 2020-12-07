@@ -7,12 +7,11 @@ import socket
 
 # Set host port
 host_port = 8000
-ip_address = '192.168.86.89'#'localhost'
-status= 'not connected'
 my_IP = socket.gethostbyname(socket.gethostname())
+ip_address = my_IP #'localhost'
 URL='%s:%d'%(ip_address,host_port)
+status= 'not connected'
 
-# Webserver
 class MyServer(BaseHTTPRequestHandler):
 
     def standardPage(self,goal = 'start'):
@@ -178,11 +177,11 @@ if __name__ == '__main__':
     cap = None
     camera = 0
     scale_percent = 50  # percent of original size
-    rotate = cv2.cv2.ROTATE_90_CLOCKWISE
+    rotate = -1   #no rotation
     
     http_server = ThreadedHTTPServer((ip_address, host_port), MyServer)
     print("Server Starts - %s:%s" % (ip_address, host_port))
-    #webbrowser.open_new('http://%s:%s' %  (ip_address, host_port))
+    webbrowser.open_new('http://%s:%s' %  (ip_address, host_port))
 
     try:
         http_server.serve_forever()
