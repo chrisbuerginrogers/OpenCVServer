@@ -10,7 +10,6 @@ host_port = 8000
 my_IP = socket.gethostbyname(socket.gethostname())
 ip_address = my_IP #'localhost'
 URL='%s:%d'%(ip_address,host_port)
-status= 'not connected'
 
 class MyServer(BaseHTTPRequestHandler):
 
@@ -19,6 +18,14 @@ class MyServer(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
+            default = []
+            default.append(my_IP)
+            default.append(status)
+            for i in range(5): default.append(URL)
+            default.append(camera)
+            default.append(scale_percent)
+            for i in range(4): default.append(' selected' if rotate == i-1 else '')
+
             self.wfile.write(('''<html><head><title>Rogers Camera Code</title></head>
                         <body><p>Rogers Camera  (%s)<br>Camera Status: %s</p>
                         <a href = "http://%s/settings">Current Settings</a><br>
@@ -32,14 +39,14 @@ class MyServer(BaseHTTPRequestHandler):
                         <label for="scale">Scale Percent:</label>  
                         <input type="number" id="scale" name="scale" value="%d"><br>  
                         <label for="rotate">Orientation:</label> 
-                        <select name="rotate" id="rotate" value="%d"> 
-                          <option value="-1">no rotation</option> 
-                          <option value="0">90 CW</option> 
-                          <option value="1">180</option> 
-                          <option value="2">90 CCW</option> 
+                        <select name="rotate" id="rotate"> 
+                          <option value="-1"%s>no rotation</option> 
+                          <option value="0"%s>90 CW</option> 
+                          <option value="1"%s>180</option> 
+                          <option value="2"%s>90 CCW</option> 
                         </select> <br><br>
                         <input type="submit" value="Update">  
-                    </form>'''%(my_IP,status,URL,URL,URL,URL,URL,camera,scale_percent,rotate)).encode("utf-8"))
+                    </form>'''%(tuple(default))).encode("utf-8"))
             self.wfile.write(("<hr><p>Executing command: %s</p>" % self.path).encode("utf-8"))
         else:
             self.wfile.write("</body></html>\r\n".encode("utf-8"))
@@ -51,7 +58,7 @@ class MyServer(BaseHTTPRequestHandler):
         return reply
 
     def parameters(self,url):
-        global camera,scale_percent,rotate
+        global camera,scale_percent,rotate,status
         if len(url) <= 1:
             return False  # there were no parameters defined
         path = url[0]
@@ -63,7 +70,7 @@ class MyServer(BaseHTTPRequestHandler):
                 param = params[0]
                 if (param == b'camera'):
                     camera = int(value)
-                if (param == b'rotation'):
+                if (param == b'rotate'):
                     rotate = int(value)
                 if (param == b'scale'):
                     scale_percent = int(value)
@@ -92,10 +99,17 @@ class MyServer(BaseHTTPRequestHandler):
             print('setting up camera %d'% (camera))
         elif (url[0] == b'/snap'):
             self.standardPage()
-            self.wfile.write('snapping from camera # {}'.format(str(camera)).encode("utf-8"))
-            self.wfile.write(('<br><br><img src="http://%s/snap.jpg">'%(URL)).encode("utf-8"))
+            if status != 'connected':
+                self.wfile.write('not connected')
+            else:
+                self.wfile.write('snapping from camera # {}'.format(str(camera)).encode("utf-8"))
+                self.wfile.write(('<br><br><img src="http://%s/snap.jpg">'%(URL)).encode("utf-8"))
         elif (url[0] == b'/snap.jpg'):
-            success, image = self.Snap()
+            if status != 'connected':
+                self.wfile.write('not connected')
+                success,image = False,None
+            else:
+                success, image = self.Snap()
             if success:
                 self.send_response(200)
                 self.send_header('Content-type', 'image/jpeg')
@@ -108,33 +122,39 @@ class MyServer(BaseHTTPRequestHandler):
                 self.wfile.write('cannot grab image'.encode())
         elif (url[0] == b'/grab'):
             self.standardPage()
-            self.wfile.write('grabbing from camera # {}'.format(str(camera)).encode("utf-8"))
-            self.wfile.write(('<br><br><iframe src="http://%s/grab.mjpg"></iframe>'%(URL)).encode("utf-8"))
+            if status != 'connected':
+                self.wfile.write('not connected')
+            else:
+                self.wfile.write('grabbing from camera # {}'.format(str(camera)).encode("utf-8"))
+                self.wfile.write(('<br><br><iframe src="http://%s/grab.mjpg"></iframe>'%(URL)).encode("utf-8"))
         elif (url[0] == b'/grab.mjpg'):
             self.send_response(200)
             self.send_header('Content-type','multipart/x-mixed-replace; boundary=--jpgboundary')
             self.end_headers()
             fails = 0
-            while True:
-                try:
-                    success, image = self.Snap()
-                    #cv2.imshow('frame',image) seems to crash things
-                    if success:
-                        fails = 0
-                        self.wfile.write('--jpgboundary\r\n'.encode())
-                        self.send_header('Content-type','image/jpeg')
-                        self.send_header('Content-length',str(image.size))
-                        self.end_headers()
-                        self.wfile.write(bytearray(image))
-                    else:
-                        fails += 1
-                        if fails > 10:
-                            break
-                    time.sleep(0.05)
-                except KeyboardInterrupt:
-                    print(e)
-                    break
-            return
+            if status != 'connected':
+                self.wfile.write('not connected')
+            else:
+                while True:
+                    try:
+                        success, image = self.Snap()
+                        #cv2.imshow('frame',image) seems to crash things
+                        if success:
+                            fails = 0
+                            self.wfile.write('--jpgboundary\r\n'.encode())
+                            self.send_header('Content-type','image/jpeg')
+                            self.send_header('Content-length',str(image.size))
+                            self.end_headers()
+                            self.wfile.write(bytearray(image))
+                        else:
+                            fails += 1
+                            if fails > 2:
+                                break
+                        time.sleep(0.05)
+                    except Exception as e:
+                        print(e)
+                        break
+                return
         elif (url[0] == b'/close'):
             status = 'not connected'
             self.standardPage()
@@ -147,10 +167,13 @@ class MyServer(BaseHTTPRequestHandler):
         self.standardPage('end')
 
     def Snap(self):
-        global cap,scale_percent, rotate
+        global cap,scale_percent, rotate, status
         if not cap:
             print('camera not initialized')
             return False, None
+        if status != 'connected':
+            print('camera not initialized')
+            return False, None            
         ret, frame = cap.read()
         if not ret:
             print('cannot grab image')
@@ -173,11 +196,12 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
             
         # Create Webserver
 if __name__ == '__main__':
-    global camera,cap,scale_percent,rotate
+    global camera,cap,scale_percent,rotate,status
     cap = None
-    camera = 0
-    scale_percent = 50  # percent of original size
-    rotate = -1   #no rotation
+    camera = 1
+    scale_percent = 20  # percent of original size
+    rotate = 1   #180 rotation
+    status = 'not connected'
     
     http_server = ThreadedHTTPServer((ip_address, host_port), MyServer)
     print("Server Starts - %s:%s" % (ip_address, host_port))
